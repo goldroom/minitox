@@ -1,2 +1,6 @@
 minitox
 savedata.tox
+# Eclipse project files
+.cproject
+.project
+.settings/

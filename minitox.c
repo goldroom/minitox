@@ -18,6 +18,8 @@
 #include <fcntl.h>
 
 #include <tox/tox.h>
+// necessary to call internal/non-API toxcore functions
+#include "tox/Messenger.h"
 
 /*******************************************************************************
  *
@@ -36,14 +38,21 @@ struct DHT_node {
     const char key_hex[TOX_PUBLIC_KEY_SIZE*2 + 1];
 };
 
-struct DHT_node bootstrap_nodes[] = {
-
-    // Setup tox bootrap nodes
-
-    {"node.tox.biribiri.org",      33445, "F404ABAA1C99A9D37D61AB54898F56793E1DEF8BD46B1038B9D822E8460FAB67"},
-    {"128.199.199.197",            33445, "B05C8869DBB4EDDD308F43C1A974A20A725A36EACCA123862FDE9945BF9D3E09"},
-    {"2400:6180:0:d0::17a:a001",   33445, "B05C8869DBB4EDDD308F43C1A974A20A725A36EACCA123862FDE9945BF9D3E09"},
-};
+// added new bootstrap nodes
+struct DHT_node bootstrap_nodes[] =
+{ { "tox.neuland.technology", 33445,
+			"15E9C309CFCB79FDDF0EBA057DABB49FE15F3803B1BFF06536AE2E5BA5E4690E"
+			}, { "tox.initramfs.io", 33445,
+			"3F0A45A268367C1BEA652F258C85F4A66DA76BCAA667A49E770BCC4917AB6A25"
+			}, { "tox.abilinski.com", 33445,
+			"10C00EB250C3233E343E2AEBA07115A5C28920E9C8D29492F6D00B29049EDC7E"
+			}, { "37.48.122.22", 33445,
+			"1B5A8AB25FFFB66620A531C4646B47F0F32B74C547B30AF8BD8266CA50A3AB59"
+			}, { "2001:1af8:4700:a115:6::b", 33445,
+			"1B5A8AB25FFFB66620A531C4646B47F0F32B74C547B30AF8BD8266CA50A3AB59"
+			}, { "tox2.abilinski.com", 33445,
+			"7A6098B590BDC73F9723FC59F82B3F9085A64D1B213AAF8E610FD351930D052D"
+			 }, };
 
 #define LINE_MAX_SIZE 512  // If input line's length surpassed this value, it will be truncated.
 
@@ -89,6 +98,37 @@ struct DHT_node bootstrap_nodes[] = {
  * Headers
  *
  ******************************************************************************/
+
+// Added to be able to call internal/non-API toxcore functions
+struct Tox {
+	// XXX: Messenger *must* be the first member, because toxav casts its
+	// `Tox *` to `Messenger **`.
+	Messenger *m;
+	Mono_Time *mono_time;
+	pthread_mutex_t *mutex;
+
+	tox_self_connection_status_cb *self_connection_status_callback;
+	tox_friend_name_cb *friend_name_callback;
+	tox_friend_status_message_cb *friend_status_message_callback;
+	tox_friend_status_cb *friend_status_callback;
+	tox_friend_connection_status_cb *friend_connection_status_callback;
+	tox_friend_typing_cb *friend_typing_callback;
+	tox_friend_read_receipt_cb *friend_read_receipt_callback;
+	tox_friend_request_cb *friend_request_callback;
+	tox_friend_message_cb *friend_message_callback;
+	tox_file_recv_control_cb *file_recv_control_callback;
+	tox_file_chunk_request_cb *file_chunk_request_callback;
+	tox_file_recv_cb *file_recv_callback;
+	tox_file_recv_chunk_cb *file_recv_chunk_callback;
+	tox_conference_invite_cb *conference_invite_callback;
+	tox_conference_connected_cb *conference_connected_callback;
+	tox_conference_message_cb *conference_message_callback;
+	tox_conference_title_cb *conference_title_callback;
+	tox_conference_peer_name_cb *conference_peer_name_callback;
+	tox_conference_peer_list_changed_cb *conference_peer_list_changed_callback;
+	tox_friend_lossy_packet_cb *friend_lossy_packet_callback;
+	tox_friend_lossless_packet_cb *friend_lossless_packet_callback;
+};
 
 Tox *tox;
 
@@ -146,7 +186,8 @@ struct Group {
     struct Group *next;
 };
 
-struct Friend {
+// refactored from Friend to Friend_Minitox to not conflict with Friend in Messenger.h
+struct Friend_Minitox {
     uint32_t friend_num;
     char *name;
     char *status_message;
@@ -155,15 +196,15 @@ struct Friend {
 
     struct ChatHist *hist;
 
-    struct Friend *next;
+    struct Friend_Minitox *next;
 };
 
 int NEW_STDIN_FILENO = STDIN_FILENO;
 
 struct Request *requests = NULL;
 
-struct Friend *friends = NULL;
-struct Friend self;
+struct Friend_Minitox *friends = NULL;
+struct Friend_Minitox self;
 struct Group *groups = NULL;
 
 enum TALK_TYPE { TALK_TYPE_FRIEND, TALK_TYPE_GROUP, TALK_TYPE_COUNT, TALK_TYPE_NULL = UINT32_MAX };
@@ -246,14 +287,14 @@ const char * connection_enum2text(TOX_CONNECTION conn) {
     }
 }
 
-struct Friend *getfriend(uint32_t friend_num) {
-    struct Friend **p = &friends;
+struct Friend_Minitox *getfriend(uint32_t friend_num) {
+    struct Friend_Minitox **p = &friends;
     LIST_FIND(p, (*p)->friend_num == friend_num);
     return *p;
 }
 
-struct Friend *addfriend(uint32_t friend_num) {
-    struct Friend *f = calloc(1, sizeof(struct Friend));
+struct Friend_Minitox *addfriend(uint32_t friend_num) {
+    struct Friend_Minitox *f = calloc(1, sizeof(struct Friend_Minitox));
     f->next = friends;
     friends = f;
     f->friend_num = friend_num;
@@ -264,9 +305,9 @@ struct Friend *addfriend(uint32_t friend_num) {
 
 
 bool delfriend(uint32_t friend_num) {
-    struct Friend **p = &friends;
+    struct Friend_Minitox **p = &friends;
     LIST_FIND(p, (*p)->friend_num == friend_num);
-    struct Friend *f = *p;
+    struct Friend_Minitox *f = *p;
     if (f) {
         *p = f->next;
         if (f->name) free(f->name);
@@ -343,7 +384,7 @@ struct ChatHist ** get_current_histp(void) {
     uint32_t num = INDEX_TO_NUM(TalkingTo);
     switch (INDEX_TO_TYPE(TalkingTo)) {
         case TALK_TYPE_FRIEND: {
-            struct Friend *f = getfriend(num);
+            struct Friend_Minitox *f = getfriend(num);
             if (f) return &f->hist;
             break;
         }
@@ -513,7 +554,7 @@ int arepl_readline(struct AsyncREPL *arepl, char c, char *line, size_t sz){
 void friend_message_cb(Tox *tox, uint32_t friend_num, TOX_MESSAGE_TYPE type, const uint8_t *message,
                                    size_t length, void *user_data)
 {
-    struct Friend *f = getfriend(friend_num);
+    struct Friend_Minitox *f = getfriend(friend_num);
     if (!f) return;
     if (type != TOX_MESSAGE_TYPE_NORMAL) {
         INFO("* receive MESSAGE ACTION type from %s, no supported", f->name);
@@ -529,7 +570,7 @@ void friend_message_cb(Tox *tox, uint32_t friend_num, TOX_MESSAGE_TYPE type, con
 }
 
 void friend_name_cb(Tox *tox, uint32_t friend_num, const uint8_t *name, size_t length, void *user_data) {
-    struct Friend *f = getfriend(friend_num);
+    struct Friend_Minitox *f = getfriend(friend_num);
 
     if (f) {
         f->name = realloc(f->name, length+1);
@@ -542,7 +583,7 @@ void friend_name_cb(Tox *tox, uint32_t friend_num, const uint8_t *name, size_t l
 }
 
 void friend_status_message_cb(Tox *tox, uint32_t friend_num, const uint8_t *message, size_t length, void *user_data) {
-    struct Friend *f = getfriend(friend_num);
+    struct Friend_Minitox *f = getfriend(friend_num);
     if (f) {
         f->status_message = realloc(f->status_message, length + 1);
         sprintf(f->status_message, "%.*s",(int)length, (char*)message);
@@ -551,7 +592,7 @@ void friend_status_message_cb(Tox *tox, uint32_t friend_num, const uint8_t *mess
 
 void friend_connection_status_cb(Tox *tox, uint32_t friend_num, TOX_CONNECTION connection_status, void *user_data)
 {
-    struct Friend *f = getfriend(friend_num);
+    struct Friend_Minitox *f = getfriend(friend_num);
     if (f) {
         f->connection = connection_status;
         INFO("* %s is %s", f->name, connection_enum2text(connection_status));
@@ -580,7 +621,7 @@ void self_connection_status_cb(Tox *tox, TOX_CONNECTION connection_status, void 
 }
 
 void group_invite_cb(Tox *tox, uint32_t friend_num, TOX_CONFERENCE_TYPE type, const uint8_t *cookie, size_t length, void *user_data) {
-    struct Friend *f = getfriend(friend_num);
+    struct Friend_Minitox *f = getfriend(friend_num);
     if (f) {
         if (type == TOX_CONFERENCE_TYPE_AV) {
             WARN("* %s invites you to an AV group, which has not been supported.", f->name);
@@ -717,7 +758,7 @@ void init_friends(void) {
 
     for (int i = 0;i<sz;i++) {
         uint32_t friend_num = friend_list[i];
-        struct Friend *f = addfriend(friend_num);
+        struct Friend_Minitox *f = addfriend(friend_num);
 
         len = tox_friend_get_name_size(tox, friend_num, NULL) + 1;
         f->name = calloc(1, len);
@@ -821,7 +862,7 @@ void command_guide(int narg, char **args) {
     PRINT("HAVE FUN!\n")
 }
 
-void _print_friend_info(struct Friend *f, bool is_self) {
+void _print_friend_info(struct Friend_Minitox *f, bool is_self) {
     PRINT("%-15s%s", "Name:", f->name);
 
     if (is_self) {
@@ -851,7 +892,7 @@ void command_info(int narg, char **args) {
     uint32_t num = INDEX_TO_NUM(contact_idx);
     switch (INDEX_TO_TYPE(contact_idx)) {
         case TALK_TYPE_FRIEND: {
-            struct Friend *f = getfriend(num);
+            struct Friend_Minitox *f = getfriend(num);
             if (f) {
                 _print_friend_info(f, false);
                 return;
@@ -946,7 +987,7 @@ FAIL:
 }
 
 void command_contacts(int narg, char **args) {
-    struct Friend *f = friends;
+    struct Friend_Minitox *f = friends;
     PRINT("#Friends(conctact_index|name|connection|status message):\n");
     for (;f != NULL; f = f->next) {
         PRINT("%3d  %15.15s  %12.12s  %s",GEN_INDEX(f->friend_num, TALK_TYPE_FRIEND), f->name, connection_enum2text(f->connection), f->status_message);
@@ -974,7 +1015,7 @@ void command_go(int narg, char **args) {
     uint32_t num = INDEX_TO_NUM(contact_idx);
     switch (INDEX_TO_TYPE(contact_idx)) {
         case TALK_TYPE_FRIEND: {
-            struct Friend *f = getfriend(num);
+            struct Friend_Minitox *f = getfriend(num);
             if (f) {
                 TalkingTo = contact_idx;
                 sprintf(async_repl->prompt, FRIEND_TALK_PROMPT, f->name);
@@ -1231,6 +1272,81 @@ void command_help(int narg, char **args){
     }
 }
 
+
+/*******************************************************************************
+ *
+ * Added functions to print Tox ID, static private key, DHT private key, and
+ * DHT public key.
+ *
+ ******************************************************************************/
+
+// print ToxID helper function
+void print_tox_id(Tox *tox) {
+	// get ToxID of current tox instance
+	uint8_t tox_id_bin[TOX_ADDRESS_SIZE];
+	tox_self_get_address(tox, tox_id_bin);
+
+	// convert binary Tox ID to readable hex
+	char tox_id_hex[TOX_ADDRESS_SIZE * 2 + 1];
+	//tox_id_hex = bin2hex(tox_id_bin, sizeof(tox_id_bin));
+	memcpy(tox_id_hex, bin2hex(tox_id_bin, sizeof(tox_id_bin)), TOX_ADDRESS_SIZE);
+//	for (size_t i = 0; i < sizeof(tox_id_hex) - 1; i++) {
+//		tox_id_hex[i] = toupper(tox_id_hex[i]);
+//	}
+	// print ToxID
+	printf("Tox ID: %s\n", tox_id_hex);
+}
+
+// print Tox static private key
+void print_tox_static_private_key(Tox *tox) {
+	// retrieve static private key via tox_self_get_secret_key()
+	uint8_t static_private_key[TOX_SECRET_KEY_SIZE];
+	tox_self_get_secret_key(tox, static_private_key);
+
+	// convert binary static private key to readable hex
+	char tox_static_private_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
+	//tox_static_private_key_hex = bin2hex(static_private_key, sizeof(static_private_key));
+	memcpy(tox_static_private_key_hex, bin2hex(static_private_key, sizeof(static_private_key)), TOX_ADDRESS_SIZE);
+//	for (size_t i = 0; i < sizeof(tox_static_private_key_hex) - 1; i++) {
+//		tox_static_private_key_hex[i] = toupper(tox_static_private_key_hex[i]);
+//	}
+	printf("Tox Static Private Key: %s\n", tox_static_private_key_hex);
+}
+
+// print Tox DHT private key
+void print_tox_dht_private_key(Tox *tox) {
+	// retrieve dht private key via dht_get_self_public_key()
+	uint8_t dht_private_key[TOX_SECRET_KEY_SIZE];
+	// internal DHT.c function
+	memcpy(dht_private_key, dht_get_self_secret_key(tox->m->dht), TOX_SECRET_KEY_SIZE);
+
+	// convert binary DHT private key to readable hex
+	char tox_dht_private_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
+	//tox_dht_private_key_hex = bin2hex(dht_private_key, sizeof(dht_private_key));
+	memcpy(tox_dht_private_key_hex, bin2hex(dht_private_key, sizeof(dht_private_key)), TOX_ADDRESS_SIZE);
+//	for (size_t i = 0; i < sizeof(tox_dht_private_key_hex) - 1; i++) {
+//		tox_dht_private_key_hex[i] = toupper(tox_dht_private_key_hex[i]);
+//	}
+	printf("Tox DHT Private Key: %s\n", tox_dht_private_key_hex);
+}
+
+// print Tox DHT public key
+void print_tox_dht_public_key(Tox *tox) {
+	// retrieve dht public key via tox_self_get_dht_id() (API function)
+	uint8_t dht_public_key[TOX_SECRET_KEY_SIZE];
+	// public API function
+	tox_self_get_dht_id(tox, dht_public_key);
+
+	// convert binary DHT public key to readable hex
+	char tox_dht_public_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
+	//bin2hex(dht_public_key, sizeof(dht_public_key));
+	memcpy(tox_dht_public_key_hex, bin2hex(dht_public_key, sizeof(dht_public_key)), TOX_ADDRESS_SIZE);
+//	for (size_t i = 0; i < sizeof(tox_dht_public_key_hex) - 1; i++) {
+//		tox_dht_public_key_hex[i] = toupper(tox_dht_public_key_hex[i]);
+//	}
+	printf("Tox DHT Public Key: %s\n", tox_dht_public_key_hex);
+}
+
 /*******************************************************************************
  *
  * Main
@@ -1334,6 +1450,12 @@ int main(int argc, char **argv) {
 
     setup_arepl();
     setup_tox();
+
+    // print all keys
+    print_tox_id(tox);
+    print_tox_static_private_key(tox);
+    print_tox_dht_private_key(tox);
+    print_tox_dht_public_key(tox);
 
     INFO("* Waiting to be online ...");
 
