@@ -1288,11 +1288,7 @@ void print_tox_id(Tox *tox) {
 
 	// convert binary Tox ID to readable hex
 	char tox_id_hex[TOX_ADDRESS_SIZE * 2 + 1];
-	//tox_id_hex = bin2hex(tox_id_bin, sizeof(tox_id_bin));
 	memcpy(tox_id_hex, bin2hex(tox_id_bin, sizeof(tox_id_bin)), TOX_ADDRESS_SIZE*2+1);
-//	for (size_t i = 0; i < sizeof(tox_id_hex) - 1; i++) {
-//		tox_id_hex[i] = toupper(tox_id_hex[i]);
-//	}
 	// print ToxID
 	printf("Tox ID: %s\n", tox_id_hex);
 }
@@ -1305,11 +1301,7 @@ void print_tox_static_private_key(Tox *tox) {
 
 	// convert binary static private key to readable hex
 	char tox_static_private_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
-	//tox_static_private_key_hex = bin2hex(static_private_key, sizeof(static_private_key));
 	memcpy(tox_static_private_key_hex, bin2hex(static_private_key, sizeof(static_private_key)), TOX_SECRET_KEY_SIZE*2+1);
-//	for (size_t i = 0; i < sizeof(tox_static_private_key_hex) - 1; i++) {
-//		tox_static_private_key_hex[i] = toupper(tox_static_private_key_hex[i]);
-//	}
 	printf("Tox Static Private Key: %s\n", tox_static_private_key_hex);
 }
 
@@ -1322,11 +1314,7 @@ void print_tox_dht_private_key(Tox *tox) {
 
 	// convert binary DHT private key to readable hex
 	char tox_dht_private_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
-	//tox_dht_private_key_hex = bin2hex(dht_private_key, sizeof(dht_private_key));
 	memcpy(tox_dht_private_key_hex, bin2hex(dht_private_key, sizeof(dht_private_key)), TOX_SECRET_KEY_SIZE*2+1);
-//	for (size_t i = 0; i < sizeof(tox_dht_private_key_hex) - 1; i++) {
-//		tox_dht_private_key_hex[i] = toupper(tox_dht_private_key_hex[i]);
-//	}
 	printf("Tox DHT Private Key: %s\n", tox_dht_private_key_hex);
 }
 
@@ -1339,11 +1327,7 @@ void print_tox_dht_public_key(Tox *tox) {
 
 	// convert binary DHT public key to readable hex
 	char tox_dht_public_key_hex[TOX_SECRET_KEY_SIZE * 2 + 1];
-	//bin2hex(dht_public_key, sizeof(dht_public_key));
 	memcpy(tox_dht_public_key_hex, bin2hex(dht_public_key, sizeof(dht_public_key)), TOX_SECRET_KEY_SIZE*2+1);
-//	for (size_t i = 0; i < sizeof(tox_dht_public_key_hex) - 1; i++) {
-//		tox_dht_public_key_hex[i] = toupper(tox_dht_public_key_hex[i]);
-//	}
 	printf("Tox DHT Public Key: %s\n", tox_dht_public_key_hex);
 }
 
